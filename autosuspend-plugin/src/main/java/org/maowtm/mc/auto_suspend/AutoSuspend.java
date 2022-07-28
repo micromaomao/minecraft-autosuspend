@@ -1,16 +1,14 @@
-package org.maowtm.mc.gce_minecraft;
+package org.maowtm.mc.auto_suspend;
 
 import java.io.File;
 import java.io.IOException;
-
-import org.checkerframework.checker.units.qual.K;
 
 import net.md_5.bungee.api.plugin.Plugin;
 import net.md_5.bungee.config.Configuration;
 import net.md_5.bungee.config.ConfigurationProvider;
 import net.md_5.bungee.config.YamlConfiguration;
 
-public class GcePlugin extends Plugin {
+public class AutoSuspend extends Plugin {
   private File configFile;
   private Configuration config;
   private ServerStateManager ssm;

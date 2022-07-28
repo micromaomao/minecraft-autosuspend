@@ -1,4 +1,4 @@
-package org.maowtm.mc.gce_minecraft;
+package org.maowtm.mc.auto_suspend;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -11,7 +11,7 @@ import net.md_5.bungee.api.connection.ProxiedPlayer;
 
 public class ServerStateManager implements Runnable {
   private final Lock l = new ReentrantLock();
-  private final GcePlugin plugin;
+  private final AutoSuspend plugin;
   private final String targetServer;
   private final ServerInfo serverInfo;
   private volatile boolean stopped = false;
@@ -27,7 +27,7 @@ public class ServerStateManager implements Runnable {
 
   private State state = State.RUNNING;
 
-  public ServerStateManager(GcePlugin plugin, String targetServer) {
+  public ServerStateManager(AutoSuspend plugin, String targetServer) {
     this.plugin = plugin;
     this.targetServer = targetServer;
     this.serverInfo = plugin.getProxy().getServerInfo(targetServer);

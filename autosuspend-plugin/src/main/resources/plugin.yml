@@ -1,0 +1,4 @@
+name: autosuspend
+main: org.maowtm.mc.auto_suspend.AutoSuspend
+version: 1.0
+author: maowtm

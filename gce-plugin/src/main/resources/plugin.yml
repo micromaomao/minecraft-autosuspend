@@ -1,4 +1,0 @@
-name: GceMinecraft
-main: org.maowtm.mc.gce_minecraft.GcePlugin
-version: 1.0
-author: maowtm

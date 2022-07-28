@@ -1,4 +1,4 @@
-package org.maowtm.mc.gce_minecraft;
+package org.maowtm.mc.auto_suspend;
 
 public final class ConfigKeys {
   public static String SERVER = "server";

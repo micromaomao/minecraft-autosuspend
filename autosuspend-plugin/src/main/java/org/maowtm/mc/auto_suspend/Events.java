@@ -1,4 +1,4 @@
-package org.maowtm.mc.gce_minecraft;
+package org.maowtm.mc.auto_suspend;
 
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -18,9 +18,9 @@ public class Events implements Listener {
   // I heard that BungeeCord is thread-safe
   // https://www.spigotmc.org/threads/scheduling-runnable-in-main-thread.254168/
 
-  private GcePlugin plugin;
+  private AutoSuspend plugin;
 
-  public Events(GcePlugin plugin) {
+  public Events(AutoSuspend plugin) {
     this.plugin = plugin;
   }
 
