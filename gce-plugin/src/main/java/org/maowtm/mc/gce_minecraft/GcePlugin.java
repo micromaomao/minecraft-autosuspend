@@ -1,0 +1,78 @@
+package org.maowtm.mc.gce_minecraft;
+
+import java.io.File;
+import java.io.IOException;
+
+import org.checkerframework.checker.units.qual.K;
+
+import net.md_5.bungee.api.plugin.Plugin;
+import net.md_5.bungee.config.Configuration;
+import net.md_5.bungee.config.ConfigurationProvider;
+import net.md_5.bungee.config.YamlConfiguration;
+
+public class GcePlugin extends Plugin {
+  private File configFile;
+  private Configuration config;
+  private ServerStateManager ssm;
+
+  @Override
+  public void onEnable() {
+    try {
+      if (!this.getDataFolder().exists()) {
+        this.getDataFolder().mkdir();
+      }
+      configFile = new File(this.getDataFolder(), "config.yml");
+      if (!configFile.exists()) {
+        configFile.createNewFile();
+      }
+      var defaults = defaultConfig();
+      config = ConfigurationProvider.getProvider(YamlConfiguration.class).load(configFile, defaults);
+      for (var k : defaults.getKeys()) {
+        if (!config.contains(k)) {
+          config.set(k, defaults.get(k));
+        }
+      }
+    } catch (IOException e) {
+      getLogger().severe(String.format("Unable to open config file: %s", e.toString()));
+      throw new RuntimeException(e);
+    }
+    trySaveConfig();
+    ssm = new ServerStateManager(this, config.getString(ConfigKeys.SERVER));
+    getProxy().getScheduler().runAsync(this, ssm);
+    getProxy().getPluginManager().registerListener(this, new Events(this));
+  }
+
+  private Configuration defaultConfig() {
+    var d = new Configuration();
+    String firstServerName = "lobby";
+    for (var server : this.getProxy().getServers().keySet()) {
+      firstServerName = server;
+      break;
+    }
+    d.set(ConfigKeys.SERVER, firstServerName);
+    d.set(ConfigKeys.SLEEP_DELAY_SECS, 10);
+    return d;
+  }
+
+  private boolean trySaveConfig() {
+    try {
+      ConfigurationProvider.getProvider(YamlConfiguration.class).save(config, configFile);
+      return true;
+    } catch (IOException e) {
+      getLogger().severe(String.format("Unable to save config: %s", e.toString()));
+      return false;
+    }
+  }
+
+  @Override
+  public void onDisable() {
+    trySaveConfig();
+  }
+
+  public Configuration getConfig() {
+    return this.config;
+  }
+  public ServerStateManager getServerState() {
+    return this.ssm;
+  }
+}
