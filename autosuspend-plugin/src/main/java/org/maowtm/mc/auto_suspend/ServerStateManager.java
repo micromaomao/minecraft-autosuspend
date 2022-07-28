@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import net.md_5.bungee.api.ChatColor;
+import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.config.ServerInfo;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 
@@ -18,6 +20,9 @@ public class ServerStateManager implements Runnable {
   private ArrayList<ProxiedPlayer> queue = new ArrayList<>();
   private Instant lastPlayerActive = Instant.now();
   private int lastPlayerCount = 0;
+  private final ServerController controller;
+  private Duration statusCheckInterval;
+  private Instant lastStatusCheck = Instant.now();
 
   public static enum State {
     NOT_READY,
@@ -25,12 +30,14 @@ public class ServerStateManager implements Runnable {
     SUSPENDED
   }
 
-  private State state = State.RUNNING;
+  private State state = State.NOT_READY;
 
-  public ServerStateManager(AutoSuspend plugin, String targetServer) {
+  public ServerStateManager(AutoSuspend plugin, String targetServer, ServerController controller) {
     this.plugin = plugin;
     this.targetServer = targetServer;
     this.serverInfo = plugin.getProxy().getServerInfo(targetServer);
+    this.controller = controller;
+    this.statusCheckInterval = Duration.ofSeconds(plugin.getConfig().getInt(ConfigKeys.STATUS_CHECK_INTERVAL_SECS));
   }
 
   public void stop() {
@@ -61,7 +68,7 @@ public class ServerStateManager implements Runnable {
     return targetServer;
   }
 
-  public synchronized void enqueue(ProxiedPlayer p) {
+  public void enqueue(ProxiedPlayer p) {
     l.lock();
     if (this.state == State.RUNNING) {
       l.unlock();
@@ -75,10 +82,44 @@ public class ServerStateManager implements Runnable {
     }
   }
 
+  /**
+   * Must hold lock already. Clears the queue.
+   */
+  private void broadcastErrorToQueue(String msg) {
+    var chat = new ComponentBuilder()
+        .color(ChatColor.RED)
+        .append(msg)
+        .create();
+    for (var p : queue) {
+      p.disconnect(chat);
+    }
+    queue.clear();
+  }
+
   private void update() {
     l.lock();
     this.updatePlayerCount(this.plugin.getProxy().getOnlineCount());
     try {
+      if (this.state == State.NOT_READY) {
+        this.lastStatusCheck = Instant.now();
+        l.unlock();
+        State new_state;
+        try {
+          new_state = controller.checkState();
+        } finally {
+          l.lock();
+        }
+        this.state = new_state;
+        if (new_state == State.NOT_READY) {
+          synchronized (this) {
+            try {
+              this.wait(5000);
+            } catch (InterruptedException e) {
+            }
+          }
+        }
+        return;
+      }
       if (this.state == State.RUNNING && !this.queue.isEmpty()) {
         for (var p : this.queue) {
           p.connect(serverInfo);
@@ -88,41 +129,81 @@ public class ServerStateManager implements Runnable {
       }
       if (this.state == State.SUSPENDED && !this.queue.isEmpty()) {
         l.unlock();
-        State new_state;
+        State new_state = State.SUSPENDED;
+        Exception err = null;
         try {
-          // TODO resume
-          // TODO loop check until server is running
           try {
-            Thread.sleep(5000);
-          } catch (InterruptedException e) {}
-          this.plugin.getLogger().info("Resumed server " + this.targetServer);
-          new_state = State.RUNNING;
+            this.controller.resume();
+            while (new_state == State.SUSPENDED) {
+              try {
+                Thread.sleep(500);
+              } catch (InterruptedException e) {
+              }
+              new_state = this.controller.checkState();
+            }
+          } catch (Exception e) {
+            err = e;
+          }
         } finally {
           l.lock();
         }
-        // TODO
+        this.lastStatusCheck = Instant.now();
         this.state = new_state;
+        if (err == null) {
+          this.plugin.getLogger().info("Resumed server " + this.targetServer);
+        } else {
+          this.plugin.getLogger().severe(String.format("Error when resuming server: %s", err.toString()));
+          err.printStackTrace();
+          this.broadcastErrorToQueue(
+              String.format("There was an error when resuming the server:\n%s\nPlease try again later.",
+                  err.getMessage()));
+        }
         return;
       }
       if (this.state == State.RUNNING && this.lastPlayerCount == 0 && this.lastPlayerActive.isBefore(
           Instant.now().minus(Duration.ofSeconds(plugin.getConfig().getInt(ConfigKeys.SLEEP_DELAY_SECS))))) {
+        // Set state to suspended first to stop new joins
         this.state = State.SUSPENDED;
         l.unlock();
-        State new_state = State.SUSPENDED;
+        boolean succeed = false;
         try {
-          // TODO: suspend server
-          try {
-            Thread.sleep(2000);
-          } catch (InterruptedException e) {}
-          this.plugin.getLogger().info("Suspended server " + this.targetServer);
+          controller.suspend();
+          succeed = true;
+        } catch (Exception e) {
+          this.plugin.getLogger().severe(String.format("Error suspending machine: %s", e.toString()));
+          e.printStackTrace();
         } finally {
           l.lock();
         }
-        // this.state = new_state;
+        if (succeed) {
+          this.plugin.getLogger().info("Suspended server " + this.targetServer);
+          this.state = State.SUSPENDED;
+        } else {
+          this.state = controller.checkState();
+        }
+        this.lastStatusCheck = Instant.now();
         return;
+      }
+
+      if (this.lastStatusCheck.isBefore(Instant.now().minus(statusCheckInterval))) {
+        this.lastStatusCheck = Instant.now();
+        l.unlock();
+        State check_state;
+        try {
+          check_state = controller.checkState();
+        } finally {
+          l.lock();
+        }
+        this.state = check_state;
       }
     } finally {
       l.unlock();
+    }
+    synchronized (this) {
+      try {
+        this.wait(1000);
+      } catch (InterruptedException e) {
+      }
     }
   }
 
@@ -134,13 +215,6 @@ public class ServerStateManager implements Runnable {
       }
 
       update();
-
-      synchronized (this) {
-        try {
-          this.wait(1000);
-        } catch (InterruptedException e) {
-        }
-      }
     }
   }
 }

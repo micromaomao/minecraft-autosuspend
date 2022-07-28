@@ -35,7 +35,8 @@ public class AutoSuspend extends Plugin {
       throw new RuntimeException(e);
     }
     trySaveConfig();
-    ssm = new ServerStateManager(this, config.getString(ConfigKeys.SERVER));
+    ssm = new ServerStateManager(this, config.getString(ConfigKeys.SERVER),
+        new GCEController(config.getSection(ConfigKeys.GOOGLE_COMPUTE_ENGINE), getLogger()));
     getProxy().getScheduler().runAsync(this, ssm);
     getProxy().getPluginManager().registerListener(this, new Events(this));
   }
@@ -49,6 +50,8 @@ public class AutoSuspend extends Plugin {
     }
     d.set(ConfigKeys.SERVER, firstServerName);
     d.set(ConfigKeys.SLEEP_DELAY_SECS, 10);
+    d.set(ConfigKeys.GOOGLE_COMPUTE_ENGINE, GCEController.getDefaultConfig());
+    d.set(ConfigKeys.STATUS_CHECK_INTERVAL_SECS, 30);
     return d;
   }
 
@@ -64,12 +67,14 @@ public class AutoSuspend extends Plugin {
 
   @Override
   public void onDisable() {
-    trySaveConfig();
+    // trySaveConfig();
+    // No need to save - nothing changes dynamically here.
   }
 
   public Configuration getConfig() {
     return this.config;
   }
+
   public ServerStateManager getServerState() {
     return this.ssm;
   }
