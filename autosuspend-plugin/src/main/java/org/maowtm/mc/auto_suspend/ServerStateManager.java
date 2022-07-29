@@ -23,6 +23,7 @@ public class ServerStateManager implements Runnable {
   private final ServerController controller;
   private Duration statusCheckInterval;
   private Instant lastStatusCheck = Instant.now();
+  private Instant keepAliveUntil = null;
 
   public static enum State {
     NOT_READY,
@@ -82,6 +83,40 @@ public class ServerStateManager implements Runnable {
     }
   }
 
+  public void keepAliveFor(Duration duration) {
+    l.lock();
+    try {
+      this.keepAliveUntil = Instant.now().plus(duration);
+      if (duration.isZero()) {
+        this.keepAliveUntil = null;
+      }
+    } finally {
+      l.unlock();
+    }
+    synchronized (this) {
+      this.notify();
+    }
+  }
+
+  public void keepAliveForever() {
+    l.lock();
+    try {
+      this.keepAliveUntil = Instant.MAX;
+    } finally {
+      l.unlock();
+    }
+    synchronized (this) {
+      this.notify();
+    }
+  }
+
+  /**
+   * Must already own lock
+   */
+  private boolean isKeepAliveEffective() {
+    return this.keepAliveUntil != null && this.keepAliveUntil.isAfter(Instant.now());
+  }
+
   /**
    * Must hold lock already. Clears the queue.
    */
@@ -127,7 +162,7 @@ public class ServerStateManager implements Runnable {
         this.queue.clear();
         return;
       }
-      if (this.state == State.SUSPENDED && !this.queue.isEmpty()) {
+      if (this.state == State.SUSPENDED && (!this.queue.isEmpty() || isKeepAliveEffective())) {
         l.unlock();
         State new_state = State.SUSPENDED;
         Exception err = null;
@@ -160,8 +195,9 @@ public class ServerStateManager implements Runnable {
         }
         return;
       }
-      if (this.state == State.RUNNING && this.lastPlayerCount == 0 && this.lastPlayerActive.isBefore(
-          Instant.now().minus(Duration.ofSeconds(plugin.getConfig().getInt(ConfigKeys.SLEEP_DELAY_SECS))))) {
+      if (this.state == State.RUNNING && !isKeepAliveEffective() && this.lastPlayerCount == 0
+          && this.lastPlayerActive.isBefore(
+              Instant.now().minus(Duration.ofSeconds(plugin.getConfig().getInt(ConfigKeys.SLEEP_DELAY_SECS))))) {
         // Set state to suspended first to stop new joins
         this.state = State.SUSPENDED;
         l.unlock();

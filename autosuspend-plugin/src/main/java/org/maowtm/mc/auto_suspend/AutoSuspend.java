@@ -39,6 +39,7 @@ public class AutoSuspend extends Plugin {
         new GCEController(config.getSection(ConfigKeys.GOOGLE_COMPUTE_ENGINE), getLogger()));
     getProxy().getScheduler().runAsync(this, ssm);
     getProxy().getPluginManager().registerListener(this, new Events(this));
+    getProxy().getPluginManager().registerCommand(this, new KeepAliveCommand(this));
   }
 
   private Configuration defaultConfig() {
@@ -75,7 +76,7 @@ public class AutoSuspend extends Plugin {
     return this.config;
   }
 
-  public ServerStateManager getServerState() {
+  public ServerStateManager getStateManager() {
     return this.ssm;
   }
 }

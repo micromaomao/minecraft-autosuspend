@@ -1,4 +1,14 @@
 name: autosuspend
+description: Automatically suspend your cloud compute resource when nobody is in the server.
 main: org.maowtm.mc.auto_suspend.AutoSuspend
-version: 1.0
+version: 1.1
 author: maowtm
+commands:
+  keepalive:
+    description: Force the server to keep running, even when no players are in.
+    permission: auto_suspend.keepalive
+    usage: |-
+      Usage: /keepalive [number of minutes]; or
+             /keepalive indefinitely
+permissions:
+  auto_suspend.keepalive: {}

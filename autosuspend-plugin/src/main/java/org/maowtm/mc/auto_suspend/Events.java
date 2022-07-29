@@ -29,7 +29,7 @@ public class Events implements Listener {
   }
 
   private ServerStateManager getServerState() {
-    return this.plugin.getServerState();
+    return this.plugin.getStateManager();
   }
 
   @EventHandler
