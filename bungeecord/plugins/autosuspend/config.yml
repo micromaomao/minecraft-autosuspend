@@ -1,0 +1,7 @@
+server: default
+sleep_delay_secs: 10
+gce:
+  project: my-project
+  zone: europe-west2-c
+  instance: minecraft-vm
+status_check_interval_secs: 30
