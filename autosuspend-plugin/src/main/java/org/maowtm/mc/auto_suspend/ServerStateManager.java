@@ -146,11 +146,14 @@ public class ServerStateManager implements Runnable {
         }
         this.state = new_state;
         if (new_state == State.NOT_READY) {
-          synchronized (this) {
-            try {
+          l.unlock();
+          try {
+            synchronized (this) {
               this.wait(5000);
-            } catch (InterruptedException e) {
             }
+          } catch (InterruptedException e) {
+          } finally {
+            l.lock();
           }
         }
         return;

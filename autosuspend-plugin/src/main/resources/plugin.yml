@@ -1,7 +1,7 @@
 name: autosuspend
 description: Automatically suspend your cloud compute resource when nobody is in the server.
 main: org.maowtm.mc.auto_suspend.AutoSuspend
-version: 1.1
+version: 1.2
 author: maowtm
 commands:
   keepalive:

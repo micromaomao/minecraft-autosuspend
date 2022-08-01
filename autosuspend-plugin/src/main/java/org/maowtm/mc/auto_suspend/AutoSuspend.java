@@ -70,6 +70,9 @@ public class AutoSuspend extends Plugin {
   public void onDisable() {
     // trySaveConfig();
     // No need to save - nothing changes dynamically here.
+    if (this.ssm != null) {
+      this.ssm.stop();
+    }
   }
 
   public Configuration getConfig() {
