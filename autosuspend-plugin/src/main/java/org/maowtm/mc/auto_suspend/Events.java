@@ -8,6 +8,7 @@ import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.event.PlayerDisconnectEvent;
 import net.md_5.bungee.api.event.ProxyPingEvent;
 import net.md_5.bungee.api.event.ServerConnectEvent;
+import net.md_5.bungee.api.event.ServerConnectEvent.Reason;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.event.EventHandler;
 
@@ -32,6 +33,10 @@ public class Events implements Listener {
     final var target = evt.getTarget();
     final var serverState = getServerState();
     if (!target.getName().equals(serverState.getTargetServer())) {
+      return;
+    }
+    if (evt.getReason() != Reason.JOIN_PROXY) {
+      // Don't handle event caused by our own .connects
       return;
     }
     serverState.updatePlayerCount(this.plugin.getProxy().getOnlineCount());

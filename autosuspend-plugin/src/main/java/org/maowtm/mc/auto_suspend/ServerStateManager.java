@@ -10,15 +10,15 @@ import java.util.ArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import com.google.api.client.json.Json;
-import com.google.api.gax.rpc.InvalidArgumentException;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 
 import net.md_5.bungee.api.ChatColor;
+import net.md_5.bungee.api.ServerConnectRequest;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.config.ServerInfo;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
+import net.md_5.bungee.api.event.ServerConnectEvent.Reason;
 
 public class ServerStateManager implements Runnable {
   private final Lock l = new ReentrantLock();
@@ -82,15 +82,10 @@ public class ServerStateManager implements Runnable {
 
   public void enqueue(ProxiedPlayer p) {
     l.lock();
-    if (this.state == State.RUNNING) {
-      l.unlock();
-      p.connect(this.serverInfo);
-    } else {
-      this.queue.add(p);
-      l.unlock();
-      synchronized (this) {
-        this.notify();
-      }
+    this.queue.add(p);
+    l.unlock();
+    synchronized (this) {
+      this.notify();
     }
   }
 
@@ -142,6 +137,16 @@ public class ServerStateManager implements Runnable {
     queue.clear();
   }
 
+  /**
+   * Must hold lock already. Clears the queue.
+   */
+  private void connectAllInQueue() {
+    for (var p : this.queue) {
+      p.connect(ServerConnectRequest.builder().target(serverInfo).reason(Reason.PLUGIN).build());
+    }
+    this.queue.clear();
+  }
+
   private void update() {
     l.lock();
     this.updatePlayerCount(this.plugin.getProxy().getOnlineCount());
@@ -170,11 +175,8 @@ public class ServerStateManager implements Runnable {
         return;
       }
       if (this.state == State.RUNNING && !this.queue.isEmpty()) {
-        for (var p : this.queue) {
-          p.connect(serverInfo);
-          this.webhookNotify(WebhookEvent.JOINED_WHILE_RUNNING, p);
-        }
-        this.queue.clear();
+        // left over from last resume
+        this.connectAllInQueue();
         return;
       }
       if (this.state == State.SUSPENDED && (!this.queue.isEmpty() || isKeepAliveEffective())) {
@@ -184,11 +186,6 @@ public class ServerStateManager implements Runnable {
         try {
           try {
             this.controller.resume();
-            if (!this.isKeepAliveEffective()) {
-              this.webhookNotify(WebhookEvent.RESUMED, this.queue.get(0));
-            } else {
-              this.webhookNotify(WebhookEvent.KEEPALIVE, null);
-            }
             while (new_state == State.SUSPENDED) {
               try {
                 Thread.sleep(500);
@@ -206,6 +203,16 @@ public class ServerStateManager implements Runnable {
         this.state = new_state;
         if (err == null) {
           this.plugin.getLogger().info("Resumed server " + this.targetServer);
+          if (!this.isKeepAliveEffective()) {
+            this.webhookNotify(WebhookEvent.RESUMED, this.queue.get(0));
+            if (this.queue.size() > 1) {
+              for (int i = 1; i < this.queue.size(); i++) {
+                this.webhookNotify(WebhookEvent.JOINED_WHILE_RUNNING, this.queue.get(i));
+              }
+            }
+          } else {
+            this.webhookNotify(WebhookEvent.KEEPALIVE, null);
+          }
         } else {
           this.plugin.getLogger().severe(String.format("Error when resuming server: %s", err.toString()));
           err.printStackTrace();
@@ -213,6 +220,7 @@ public class ServerStateManager implements Runnable {
               String.format("There was an error when resuming the server:\n%s\nPlease try again later.",
                   err.getMessage()));
         }
+        // next loop iteration will connect the players.
         return;
       }
       if (this.state == State.RUNNING && !isKeepAliveEffective() && this.lastPlayerCount == 0
@@ -293,7 +301,8 @@ public class ServerStateManager implements Runnable {
       player_name = null;
     }
     final var client = this.webhookClient;
-    final int nb_players = this.lastPlayerCount; // A more reliable number than proxy.getOnlineCount when player are leaving. See Events.onDisconnect
+    final int nb_players = this.lastPlayerCount; // A more reliable number than proxy.getOnlineCount when player are
+                                                 // leaving. See Events.onDisconnect
     plugin.getProxy().getScheduler().runAsync(plugin, () -> {
       String msg = generateWebhookMessage(event, player_name, nb_players);
       var json = new JsonObject();

@@ -5,3 +5,6 @@ gce:
   zone: europe-west2-c
   instance: minecraft-vm
 status_check_interval_secs: 30
+# webhook:
+  # url: https://discord.com/api/webhooks/...
+  # json_key: content
