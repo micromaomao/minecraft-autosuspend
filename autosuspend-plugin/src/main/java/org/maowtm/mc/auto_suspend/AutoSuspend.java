@@ -50,7 +50,7 @@ public class AutoSuspend extends Plugin {
       break;
     }
     d.set(ConfigKeys.SERVER, firstServerName);
-    d.set(ConfigKeys.SLEEP_DELAY_SECS, 10);
+    d.set(ConfigKeys.SLEEP_DELAY_SECS, 30);
     d.set(ConfigKeys.GOOGLE_COMPUTE_ENGINE, GCEController.getDefaultConfig());
     d.set(ConfigKeys.STATUS_CHECK_INTERVAL_SECS, 30);
     return d;

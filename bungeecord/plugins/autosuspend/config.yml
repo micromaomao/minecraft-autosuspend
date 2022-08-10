@@ -1,5 +1,5 @@
 server: default
-sleep_delay_secs: 10
+sleep_delay_secs: 30
 gce:
   project: my-project
   zone: europe-west2-c
