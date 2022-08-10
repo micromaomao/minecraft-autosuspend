@@ -9,4 +9,9 @@ public final class ConfigKeys {
   public static String GCE_PROJECT = "project";
   public static String GCE_ZONE = "zone";
   public static String GCE_INSTANCE = "instance";
+
+  public static String WEBHOOK = "webhook";
+  public static String WEBHOOK_URL = "url";
+  public static String WEBHOOK_JSON_KEY = "json_key";
+  public static String WEBHOOK_INCLUDE_USER = "include_user";
 }

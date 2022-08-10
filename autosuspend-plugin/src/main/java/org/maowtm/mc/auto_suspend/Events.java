@@ -1,13 +1,11 @@
 package org.maowtm.mc.auto_suspend;
 
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
+import org.maowtm.mc.auto_suspend.ServerStateManager.WebhookEvent;
 
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.event.PlayerDisconnectEvent;
-import net.md_5.bungee.api.event.PostLoginEvent;
 import net.md_5.bungee.api.event.ProxyPingEvent;
 import net.md_5.bungee.api.event.ServerConnectEvent;
 import net.md_5.bungee.api.plugin.Listener;
@@ -22,10 +20,6 @@ public class Events implements Listener {
 
   public Events(AutoSuspend plugin) {
     this.plugin = plugin;
-  }
-
-  private Logger getLogger() {
-    return this.plugin.getLogger();
   }
 
   private ServerStateManager getServerState() {
@@ -51,13 +45,15 @@ public class Events implements Listener {
         serverState.enqueue(player);
         break;
       case RUNNING:
+        serverState.webhookNotify(WebhookEvent.JOINED_WHILE_RUNNING, player);
         break;
     }
   }
 
   @EventHandler
   public void onDisconnect(PlayerDisconnectEvent evt) {
-    this.getServerState().updatePlayerCount(this.plugin.getProxy().getOnlineCount());
+    this.getServerState().updatePlayerCount(this.plugin.getProxy().getOnlineCount() - 1);
+    this.getServerState().webhookNotify(WebhookEvent.LEFT, evt.getPlayer());
   }
 
   @EventHandler

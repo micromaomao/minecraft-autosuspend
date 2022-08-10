@@ -1,10 +1,19 @@
 package org.maowtm.mc.auto_suspend;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import com.google.api.client.json.Json;
+import com.google.api.gax.rpc.InvalidArgumentException;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.ComponentBuilder;
@@ -24,6 +33,7 @@ public class ServerStateManager implements Runnable {
   private Duration statusCheckInterval;
   private Instant lastStatusCheck = Instant.now();
   private Instant keepAliveUntil = null;
+  private HttpClient webhookClient;
 
   public static enum State {
     NOT_READY,
@@ -39,6 +49,7 @@ public class ServerStateManager implements Runnable {
     this.serverInfo = plugin.getProxy().getServerInfo(targetServer);
     this.controller = controller;
     this.statusCheckInterval = Duration.ofSeconds(plugin.getConfig().getInt(ConfigKeys.STATUS_CHECK_INTERVAL_SECS));
+    this.webhookClient = HttpClient.newBuilder().connectTimeout(Duration.ofMillis(10000)).build();
   }
 
   public void stop() {
@@ -161,6 +172,7 @@ public class ServerStateManager implements Runnable {
       if (this.state == State.RUNNING && !this.queue.isEmpty()) {
         for (var p : this.queue) {
           p.connect(serverInfo);
+          this.webhookNotify(WebhookEvent.JOINED_WHILE_RUNNING, p);
         }
         this.queue.clear();
         return;
@@ -172,6 +184,11 @@ public class ServerStateManager implements Runnable {
         try {
           try {
             this.controller.resume();
+            if (!this.isKeepAliveEffective()) {
+              this.webhookNotify(WebhookEvent.RESUMED, this.queue.get(0));
+            } else {
+              this.webhookNotify(WebhookEvent.KEEPALIVE, null);
+            }
             while (new_state == State.SUSPENDED) {
               try {
                 Thread.sleep(500);
@@ -208,6 +225,7 @@ public class ServerStateManager implements Runnable {
         try {
           controller.suspend();
           succeed = true;
+          this.webhookNotify(WebhookEvent.SUSPENDED, null);
         } catch (Exception e) {
           this.plugin.getLogger().severe(String.format("Error suspending machine: %s", e.toString()));
           e.printStackTrace();
@@ -254,6 +272,76 @@ public class ServerStateManager implements Runnable {
       }
 
       update();
+    }
+  }
+
+  public enum WebhookEvent {
+    RESUMED, SUSPENDED, JOINED_WHILE_RUNNING, LEFT, KEEPALIVE
+  }
+
+  public void webhookNotify(final WebhookEvent event, ProxiedPlayer actor) {
+    final var plugin = this.plugin;
+    final var config = plugin.getConfig();
+    if (!config.contains(ConfigKeys.WEBHOOK)) {
+      return;
+    }
+    final var webhook_config = config.getSection(ConfigKeys.WEBHOOK);
+    final String player_name;
+    if (webhook_config.getBoolean(ConfigKeys.WEBHOOK_INCLUDE_USER, true) && actor != null) {
+      player_name = actor.getName();
+    } else {
+      player_name = null;
+    }
+    final var client = this.webhookClient;
+    final int nb_players = this.lastPlayerCount; // A more reliable number than proxy.getOnlineCount when player are leaving. See Events.onDisconnect
+    plugin.getProxy().getScheduler().runAsync(plugin, () -> {
+      String msg = generateWebhookMessage(event, player_name, nb_players);
+      var json = new JsonObject();
+      json.addProperty(webhook_config.getString(ConfigKeys.WEBHOOK_JSON_KEY, "content"), msg);
+      try {
+        var req = HttpRequest.newBuilder()
+            .POST(HttpRequest.BodyPublishers.ofString(new Gson().toJson(json)))
+            .uri(new URI(webhook_config.getString(ConfigKeys.WEBHOOK_URL)))
+            .setHeader("User-Agent", "Minecraft-AutoSuspend")
+            .setHeader("Content-Type", "application/json")
+            .build();
+        var res = client.send(req, HttpResponse.BodyHandlers.ofString());
+        if (res.statusCode() < 200 || res.statusCode() >= 300) {
+          throw new Exception(String.format("%d: %s", res.statusCode(), res.body()));
+        }
+      } catch (Exception e) {
+        plugin.getLogger().severe(String.format("Unable to send webhook: ", e.toString()));
+        e.printStackTrace();
+      }
+    });
+  }
+
+  private String generateWebhookMessage(WebhookEvent event, String player_name, int nb_players) {
+    switch (event) {
+      case RESUMED:
+        if (player_name != null) {
+          return String.format("Server resumed: %s joined the game.", player_name);
+        } else {
+          return "Server resumed: someone joined.";
+        }
+      case SUSPENDED:
+        return "Server suspended.";
+      case JOINED_WHILE_RUNNING:
+        if (player_name != null) {
+          return String.format("%s joined the game. (%d players online)", player_name, nb_players);
+        } else {
+          return String.format("Someone just joined. (%d players online)", nb_players);
+        }
+      case LEFT:
+        if (player_name != null) {
+          return String.format("%s left the game. (%d players now online)", player_name, nb_players);
+        } else {
+          return String.format("Someone just left. (%d players now online)", nb_players);
+        }
+      case KEEPALIVE:
+        return "Server keepalive enabled.";
+      default:
+        throw new RuntimeException("unreachable");
     }
   }
 }
